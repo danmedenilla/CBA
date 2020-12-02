@@ -1,0 +1,99 @@
+from matplotlib.gridspec import GridSpec
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
+from collections import Counter
+
+deg = 0
+cor = 0
+pre = 0
+imp = 0
+ins = 0
+def fixOverLappingText(text):
+
+    # if undetected overlaps reduce sigFigures to 1
+    sigFigures = 2
+    positions = [(round(item.get_position()[1],sigFigures), item) for item in text]
+
+    overLapping = Counter((item[0] for item in positions))
+    overLapping = [key for key, value in overLapping.items() if value >= 2]
+
+    for key in overLapping:
+        textObjects = [text for position, text in positions if position == key]
+
+        if textObjects:
+
+            # If bigger font size scale will need increasing
+            scale = 0.05
+
+            spacings = np.linspace(0,scale*len(textObjects),len(textObjects))
+
+            for shift, textObject in zip(spacings,textObjects):
+                textObject.set_y(key + shift)
+
+
+threshold = 70
+flag_up = 0
+chart_df = pd.read_csv(r'C:\Users\GGRDD-8\Desktop\summary.csv')
+df_ideal = pd.DataFrame({'ct': [0, 0, 70, 5 , 25]},
+                  index=['Degenerative' ,'Insufficient Data', 'Preventive Systematic', 'Improvement', 'Corrective'])
+
+
+df_pie = pd.DataFrame({'ct': [0, 0, 0 , 0, 0]},
+                  index=['Degenerative', 'Insufficient Data', 'Preventive Maintenance','Improvement', 'Corrective'])
+df_pie = df_pie.fillna(0)
+
+print (chart_df)
+for index in chart_df.index.values:
+    print(index)
+    uptime = (chart_df.iloc[index,4] + chart_df.iloc[index,5])/2
+    if (chart_df.iloc[index,4] == 0 and chart_df.iloc[index,5] == 0):
+        flag_up = 1
+    if (uptime == 0 and chart_df.iloc[index,8] == 0):
+        df_pie.loc['Insufficient Data','ct'] = df_pie.loc['Insufficient Data','ct'] + 1
+        ins = ins + 1
+    if (uptime == 0 and chart_df.iloc[index,8] == 1):
+        df_pie.loc['Insufficient Data','ct'] = df_pie.loc['Insufficient Data','ct'] + 1
+        ins = ins + 1
+    if (uptime < 0 and uptime >= -5) or (uptime > 0 and uptime <= 20):
+        df_pie.loc['Preventive Maintenance','ct'] = df_pie.loc['Preventive Maintenance','ct'] + 1
+        pre = pre + 1
+    if (uptime < -5):
+        df_pie.loc['Degenerative', 'ct'] = df_pie.loc['Degenerative','ct'] + 1
+        deg = deg + 1
+    if (uptime > 20 and uptime < threshold):
+        df_pie.loc['Improvement','ct'] = df_pie.loc['Improvement','ct'] + 1
+        imp = imp + 1
+    if (uptime > threshold):
+        df_pie.loc['Corrective','ct'] = df_pie.loc['Corrective','ct'] + 1  
+        cor = cor + 1
+print (df_pie)
+plt.figure(1, figsize=(20,28)) 
+the_grid = GridSpec(2, 2)
+cmap = plt.get_cmap('Spectral')
+col = [cmap(i) for i in np.linspace(0, 5, 30)]
+plt.subplot(the_grid[0, 1], aspect=1, title='Maintenance Activity Classification for 2019')
+type_show_ids = plt.pie(df_pie.ct, labels=df_pie.index.values, autopct='%1.1f%%', shadow=True, colors=col)
+plt.legend(loc="top left", bbox_to_anchor=(0.9, 0.95), fancybox=True)
+plt.savefig(r'C:\Users\GGRDD-8\Desktop\pie 2019.png', bbox_inches ='tight', dpi=200)
+plt.show()
+
+plt.figure(1, figsize=(20,28)) 
+the_grid = GridSpec(2, 2)
+plt.subplot(the_grid[0, 1], aspect=1, title='Ideal Maintenance Classification Distribution')
+type_show_ids = plt.pie(df_ideal.ct, labels=df_ideal.index.values, autopct='%1.1f%%', shadow=True, colors=col)[1] #remove # for overlapping
+fixOverLappingText(type_show_ids)
+plt.legend(loc="top left", bbox_to_anchor=(0.9, 0.95), fancybox=True)
+plt.savefig(r'C:\Users\GGRDD-8\Desktop\pie ideal.png',bbox_inches ='tight', dpi=200)
+plt.show()
+
+print("corrective")
+print(cor)
+print("improvement")
+print(imp)
+print("preventive")
+print(pre)
+print("insufficient")
+print(ins)
+print("degenerative")
+print(deg)
