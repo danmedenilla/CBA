@@ -1,0 +1,60 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Nov 26 11:45:58 2020
+
+@author: GGRDD-8
+"""
+import pandas as pd
+import matplotlib.pyplot as plt
+
+v3 = pd.DataFrame(columns=['site', 'uptime'])
+v2 = pd.DataFrame(columns=['site', 'uptime'])
+
+uptime = pd.read_csv(r'C:\Users\GGRDD-8\Desktop\uptime_clean.csv')
+uptime = uptime.set_index('site')
+
+print(uptime)
+for idx in uptime.index:
+    suffix = str(idx)[3:]
+    print(suffix)
+    ups = uptime.loc[idx,'uptime']
+    if (suffix == 'g'):
+        v3=v3.append({'site':idx, 'uptime' : ups}, ignore_index=True)
+    else:
+        v2=v2.append({'site':idx, 'uptime' : ups}, ignore_index=True)
+print("VVVVVVVVVVVVVVVV2")
+print(v2)
+print("VVVVVVVVVVVVVVVV3")
+print(v3)
+
+#v2.to_csv(r'C:\Users\GGRDD-8\Desktop\v2.csv')
+#v3.to_csv(r'C:\Users\GGRDD-8\Desktop\v3.csv')
+
+fig,ax = plt.subplots(figsize =(30, 10))
+
+v2 = v2.sort_values(by=['uptime'], ascending=True)
+v3 = v3.sort_values(by=['uptime'], ascending=True)
+
+v2_mean = v2['uptime'].mean()
+v3_mean = v3['uptime'].mean()
+
+plt.bar(v2['site'], v2['uptime'], color='blue', width=0.9, label="V2 dataloggers")
+plt.bar(v3.site, v3.uptime, color = 'orange', label="Radio-based dataloggers")
+
+v2_mean = v2['uptime'].mean()
+v3_mean = v3['uptime'].mean()
+
+print (v2_mean)
+print (v3_mean)
+
+plt.ylabel('Data Telemetered (%)', fontsize=22)
+plt.xlabel('Dataloggers', fontsize=22)
+plt.axhline(v2_mean, 0, 1, color='blue',linestyle='--', label='V2 datalogger average data telemetered')
+plt.text(0, v2_mean, ("%.2f" % v2_mean)+"%", fontsize=18, va='center', ha='center', backgroundcolor='w')
+plt.text(0, v3_mean, ("%.2f" % v3_mean)+"%", fontsize=18, va='center', ha='center', backgroundcolor='w')
+plt.axhline(v3_mean, 0, 1, color='orange',linestyle='--', label='Radio-based datalogger average data telemetered')
+plt.legend(loc='upper left', fontsize=16)
+plt.xticks(rotation='vertical', fontsize=16)
+plt.title('Datalogger Comparison (2019)', fontsize=25)
+
+plt.show()
