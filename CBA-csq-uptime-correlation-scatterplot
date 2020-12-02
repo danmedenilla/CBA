@@ -1,0 +1,44 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sat Nov 21 00:38:20 2020
+
+@author: GGRDD-=
+"""
+import matplotlib.pyplot as plt
+import pandas as pd
+import pylab as py
+from matplotlib import pyplot as plt
+from matplotlib.text import TextPath
+
+#scatter from csv
+#yung X axis ay Uptime ng sites, Yung Y axis ay Average CSQ ( when available )
+
+uptime_data = pd.read_csv(r'C:\Users\GGRDD-8\Desktop\drft.csv')
+print(uptime_data)
+uptime_data = uptime_data[uptime_data['score'] > 0]
+print(uptime_data)
+v2 = uptime_data[uptime_data['logger_type'] == 'arq']
+v34 = uptime_data[uptime_data['logger_type'] == 'gateway']
+print (v2)
+print (v34)
+
+v2 = v2.sort_values(by=['score'], ascending=False)
+v34 = v34.sort_values(by=['score'], ascending=False)
+
+fig,ax = plt.subplots(figsize =(10, 8))
+                   
+plt.scatter(v2.csq, v2.score, marker="o", s=50, label="v2 dataloggers")
+plt.scatter(v34.csq, v34.score, marker="*", s=80, label="v3/v4 dataloggers")
+
+data = pd.DataFrame(v2, columns=['logger', 'csq', 'score'])
+
+
+plt.ylabel('Site Uptime (%)', fontsize=16)
+plt.xlabel('average csq', fontsize=16)
+plt.legend(loc='lower right')
+plt.show()
+
+ax = v2.plot(kind='scatter',x='csq',y='score')
+v2[['csq','score','logger']].apply(lambda row: ax.text(*row),axis=1);
+fig.canvas.draw()
+
