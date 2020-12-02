@@ -1,0 +1,104 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Nov 20 13:55:05 2020
+
+@author: GGRDD-8
+"""
+import pandas as pd
+import matplotlib.ticker as mtick
+#import matplotlib.dates as mdates
+import glob
+import datetime
+import matplotlib.pyplot as plt
+from itertools import cycle
+from matplotlib import gridspec
+from datetime import timedelta
+from pandas.plotting import table
+import matplotlib.colors as colors
+import numpy as np
+from cycler import cycler
+import mysql.connector
+
+
+blank = pd.DataFrame(columns=['logger'])
+emp_r = []
+
+date_idx = pd.date_range(start='1/1/2019', end='12/31/2019', freq='30min')
+timerange = pd.DataFrame(date_idx, columns = ['ts'])
+#timerange = timerange.set_index('ts')
+timerange['tscore'] = 1
+
+logger = pd.read_csv(r'C:\Users\Razon\Desktop\logver.csv')
+logger = pd.DataFrame(logger, columns = ['logger_name','logger_type'])
+
+def fetch_data_table(site_name):                               #FETCH DB from workbench
+    flag_t=0  
+    try:
+        connection = mysql.connector.connect(host='192.168.150.112',
+                                     database='analysis_db',
+                                     user='pysys_local',
+                                     password='NaCAhztBgYZ3HwTkvHwwGVtJn5sVMFgg')
+        
+        select_sample = "SELECT ts, csq FROM analysis_db.rain_"+site_name+" where ts > '2018-12-31 23:59:00' AND ts < '2020-01-01 00:00:00';"
+        cursor = connection.cursor()
+        cursor.execute(select_sample)
+        print("select success")
+        table_samplet = cursor.fetchall()
+        data_table = pd.DataFrame(table_samplet, columns=cursor.column_names)
+    except mysql.connector.Error as error:
+        print("Failed to access table in MySQL: {}".format(error))
+        flag_t=1
+    finally:
+        if (connection.is_connected()):
+            print("MySQL connection is closed")
+            if (flag_t == 1):
+                print('return empty df') 
+                data_table = emp_r
+                connection.close()
+            cursor.close()
+    flag_t=0
+    return(data_table)    
+
+def get_uptime_csq (logger_name):
+    
+    print(logger_name)
+    
+    rdata = fetch_data_table(logger_name)
+        
+    #print (timerange)
+    
+    rdata = pd.DataFrame(rdata, columns = ['ts','csq'])
+    rdata['ts'] = pd.to_datetime(rdata['ts'])
+    mask = (rdata['ts'] >= '1-1-2019') & (rdata['ts'] < '12-31-2019')
+    rdata = rdata.loc[mask]
+    rdata['ts'] = rdata['ts'].dt.round('30min')
+    rdata['rscore'] = 1
+    print("RDATA")
+    print(rdata)
+    print("END")
+    
+   
+    score_df = pd.merge(timerange,rdata, on='ts', how='left')
+    score_df = score_df.drop_duplicates(subset='ts')
+    print(score_df)
+    csq = score_df['csq'].mean(skipna=True)
+    uptime = (score_df['rscore'].sum())/(score_df['tscore'].sum())*100 
+    print(uptime, csq)
+    return logger_name,uptime,csq
+
+    
+path = r'C:\Users\GGRDD-8\Desktop\test_csv\*.csv'
+
+for logger_name in logger['logger_name']:
+    print(logger_name)
+    site_name, uptime, csq = get_uptime_csq(logger_name)
+    blank = blank.append({'logger': site_name, 'score' : uptime, 'csq' : csq}, ignore_index=True)
+
+print (blank)
+print (timerange)
+print(logger)
+
+merge_df = pd.merge(blank,logger, how='left', left_on='logger', right_on="logger_name")
+print (merge_df)
+
+merge_df.to_csv(r'C:\Users\Razon\Desktop\drft.csv')
