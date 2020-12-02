@@ -1,0 +1,60 @@
+import mysql.connector
+import pandas as pd
+
+router = pd.read_csv(r'C:\Users\GGRDD-8\Desktop\router.csv')
+logger_list = pd.read_csv(r'C:\Users\GGRDD-8\Desktop\loggers_list.csv')
+
+date_idx = pd.date_range(start='1/1/2019', end='12/31/2019', freq='30min')
+timerange = pd.DataFrame(date_idx, columns = ['ts'])
+
+emp_r = pd.DataFrame(columns=['ts', 'score'])
+uptime_db = pd.DataFrame(columns=['ts'])
+
+blank_db=pd.DataFrame (columns = ['site','uptime'])
+
+
+#returns maintenance_logs columns=['act_id', 'act_ts', 'logger_name']                              
+       
+def fetch_data_table(s_name):                               #FETCH DB from workbench
+    flag_t=0  
+    connection = mysql.connector.connect(host='192.168.150.112',
+                                     database='analysis_db',
+                                     user='pysys_local',
+                                     password='NaCAhztBgYZ3HwTkvHwwGVtJn5sVMFgg')
+    try:
+        select_sample = "SELECT ts FROM analysis_db.rain_"+s_name+" where ts > '2018-12-31 23:59:00' AND ts < '2020-01-01 00:00:00';"
+        cursor = connection.cursor()
+        cursor.execute(select_sample)
+        print("select success")
+        table_samplet = cursor.fetchall()
+        rain_table = pd.DataFrame(table_samplet, columns=cursor.column_names)
+    except mysql.connector.Error as error:
+        print("Failed to access table in MySQL: {}".format(error))
+        flag_t=1
+    finally:
+        if (connection.is_connected()):
+            print("MySQL connection is closed")
+            if (flag_t == 1):
+                print('return empty df here') 
+                rain_table = emp_r
+                connection.close()
+    cursor.close()
+    return(rain_table)                                              #returns rain_table           
+
+    
+#s_name='agbsb'
+for s_name in logger_list.logger_name:
+    print(s_name)
+    rain = fetch_data_table(s_name)
+    try:
+        rain['ts'] = rain['ts'].dt.round('30min')
+    except:
+        pass
+    rain['score'] = 100
+    uptime = pd.merge(timerange, rain, how='left', left_on='ts', right_on='ts')
+    print(uptime)
+    uptime = uptime.fillna(0)
+    print(uptime["score"].mean())
+    blank_db=blank_db.append({'site':s_name, 'uptime' : uptime["score"].mean()}, ignore_index=True)
+print(blank_db)
+blank_db.to_csv(r'C:\Users\GGRDD-8\Desktop\uptime_list.csv')
