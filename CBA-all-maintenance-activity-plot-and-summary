@@ -1,0 +1,486 @@
+import pandas as pd
+import mysql.connector
+import matplotlib.ticker as mtick
+import datetime
+import matplotlib.pyplot as plt
+from itertools import cycle
+from matplotlib import gridspec
+from pandas.plotting import table
+import matplotlib.colors as colors
+import numpy as np
+from cycler import cycler
+import matplotlib.pyplot as pyplot
+
+
+emp = pd.DataFrame(columns=['ts'])
+
+prop_cycle = plt.rcParams['axes.prop_cycle']
+colors = cycle(prop_cycle.by_key()['color'])
+
+emp_r = pd.DataFrame(columns=['ts', 'rain', 'battery1', 'battery2', 'csq'])
+emp_m = pd.DataFrame(columns=['act_id', 'act_ts', 'logger_name'])
+emp_t = pd.DataFrame(columns=['ts, node_id, type_num'])
+chart_df = pd.DataFrame(columns=['idx'])
+threshold = 50
+blank_db=[]
+r=1
+global null_flag
+
+def fetch_maintenance_logs():                               #FETCH DB from workbench
+    flag_df=0
+    try:
+        connection = mysql.connector.connect(host='192.168.150.112',
+                                     database='analysis_db',
+                                     user='pysys_local',
+                                     password='NaCAhztBgYZ3HwTkvHwwGVtJn5sVMFgg')
+
+        select_logs = "SELECT act_id, act_ts, logger_name, status_after_visit FROM analysis_db.maintenance_logs where act_ts > '2018-12-31 23:30:00' AND act_ts < '2020-01-01 00:00:00';"
+        cursor = connection.cursor()
+        cursor.execute(select_logs)
+        print("select success")
+        table_sample = cursor.fetchall()
+        maintenance_logs = pd.DataFrame(table_sample, columns=cursor.column_names)
+          
+    except mysql.connector.Error as error:
+        print("Failed to access table in MySQL: {}".format(error))
+        flag_df=1
+    finally:
+        if (connection.is_connected()):
+            print("MySQL connection is closed")
+            if (flag_df == 1):
+                print('return empty df here') 
+                maintenance_logs = emp_m
+            connection.close()
+            cursor.close()
+        try:
+            maintenance_logs['act_ts'] = maintenance_logs['act_ts'].dt.date
+        except:
+            maintenance_logs = emp_m
+        return(maintenance_logs)                                   #returns maintenance_logs columns=['act_id', 'act_ts', 'logger_name']                              
+       
+
+
+def fetch_data_table(s_name):                               #FETCH DB from workbench
+    flag_t=0  
+    try:
+        connection = mysql.connector.connect(host='192.168.150.112',
+                                     database='analysis_db',
+                                     user='pysys_local',
+                                     password='NaCAhztBgYZ3HwTkvHwwGVtJn5sVMFgg')
+
+        select_sample = "SELECT ts, rain, battery1, battery2, csq FROM analysis_db.rain_"+s_name+" where ts > '2018-12-31 23:59:00' AND ts < '2020-01-01 00:00:00';"
+        cursor = connection.cursor()
+        cursor.execute(select_sample)
+        print("select success")
+        table_samplet = cursor.fetchall()
+        rain_table = pd.DataFrame(table_samplet, columns=cursor.column_names)
+    except mysql.connector.Error as error:
+        print("Failed to access table in MySQL: {}".format(error))
+        flag_t=1
+    finally:
+        if (connection.is_connected()):
+            print("MySQL connection is closed")
+            if (flag_t == 1):
+                print('return empty df here') 
+                connection.close()
+                cursor.close()
+                rain_table = emp_r
+    return(rain_table)                                              #returns rain_table
+            
+                                  #INSERT DEFAULT EMPTY DB  
+def fetch_tilt_table(s_name):                               #FETCH DB from workbench
+    flag_t=0  
+    try:
+        connection = mysql.connector.connect(host='192.168.150.112',
+                                     database='analysis_db',
+                                     user='pysys_local',
+                                     password='NaCAhztBgYZ3HwTkvHwwGVtJn5sVMFgg')
+
+        select_sample = "SELECT ts, node_id, type_num FROM analysis_db.tilt_"+s_name+" where ts > '2018-12-31 23:59:00' AND ts < '2020-01-01 00:00:00';"
+        cursor = connection.cursor()
+        cursor.execute(select_sample)
+        print("select success")
+        table_samplet = cursor.fetchall()
+        tilt_table = pd.DataFrame(table_samplet, columns=cursor.column_names)
+    except mysql.connector.Error as error:
+        print("Failed to access table in MySQL: {}".format(error))
+        flag_t=1
+    finally:
+        if (connection.is_connected()):
+            print("MySQL connection is closed")
+            connection.close()
+            cursor.close()
+            if (flag_t == 1):
+                print('return empty df here') 
+                tilt_table = emp_t
+    return(tilt_table)                                              #returns tilt_table
+
+
+##COUNT number of nodes in tiltcsv
+def getnode(nodesdf):
+    nodes = nodesdf.node_id.unique()
+    nodes = nodes.tolist()
+    
+    for err in nodes[:]:
+        if int(err) > 40:
+            nodes.remove(err)        
+    nodes.sort()
+    print (nodes)
+    return nodes
+
+def get_tilt_df(csv_name):
+    
+    data = pd.DataFrame(fetch_tilt_table(csv_name.lower()))
+
+    date_idx = pd.date_range(start='1/1/2019', end='12/31/2019', freq='1D')
+    timerange = pd.DataFrame(date_idx, columns = ['ts'])
+    timerange = timerange.set_index('ts')
+    
+    print (timerange)
+    
+    data['ts'] = pd.to_datetime(data['ts'])
+    mask = (data['ts'] >= '1-1-2019') & (data['ts'] < '12-31-2019')
+    data = data.loc[mask]
+    data['ts'] = data['ts'].dt.round('30min')
+    
+    node_count = getnode(data)
+    print (data)
+    
+    plt.figure(figsize =(30, 10))
+    plt.title(csv_name + " node availability temp1")
+    
+    for n in node_count:
+        node_count = str(n)
+        tmp = data[data.node_id == n]             #### Change value for node numbers    
+        print(tmp)
+        tmp32 = tmp[tmp.type_num == 32]
+        tmp11 = tmp[tmp.type_num == 11]
+        tmp3211 = pd.merge(tmp32, tmp11, how='outer')
+        tmp3211['node_id'] = 1
+        
+        tmp3211 = tmp3211.set_index('ts')    
+        tmp3211 = tmp3211.resample('30T').mean()
+        tmp3211 = tmp3211.node_id.resample("D").sum()
+        tmp3211 = pd.DataFrame(tmp3211)
+        
+        print (n)
+        print (tmp3211)
+        plt.plot(tmp3211.index.values,tmp3211.node_id, label="node "+str(n), color = next(colors), alpha=0.5)
+        timerange = pd.merge(timerange, tmp3211, how='left', left_on='ts', right_on='ts')
+        
+        
+    plt.legend()
+    plt.ylim((0,48))
+    plt.gca().set_yticklabels(['{:.0f}%'.format(x*2.08333) for x in plt.gca().get_yticks()]) 
+    plt.ylabel('Daily Data Average')
+    plt.show()
+    print (data.head(35))
+    print (timerange)
+    
+    print(len(timerange.columns))
+    
+    fig,az = plt.subplots(1, figsize =(30, 10))
+    hd = fig.suptitle(csv_name.upper() + " node availability data 2019", y=0.92, fontsize=24)
+    colors2 = plt.cm.Spectral(np.linspace(0,1,len(timerange.columns)))
+    az.set_prop_cycle(cycler('color', colors2))
+    for n in range(len(timerange.columns)):
+        az.plot(timerange.index.values, 2.08333333333*timerange.iloc[ : , n ],  alpha=0.7, label='node '+str(n+1))
+    lgd = az.legend(title='accel nodes', loc='upper left', bbox_to_anchor=(1.005, 1), fancybox=True) 
+    plt.ylabel('Node Uptime')
+    plt.gca().set_yticklabels(['{:.0f}%'.format(x*1) for x in plt.gca().get_yticks()])
+    #plt.savefig(r'C:\Users\GGRDD-8\Desktop\mplots\2019 maintenance\\' + csv_name + ' node uptime.png',dpi=200, bbox_extra_artists=(lgd,hd,), bbox_inches ='tight')
+    plt.show()  
+    
+    return(timerange)
+
+    
+
+def multiplot(rain_df, logger_name):
+    
+    print(logger_name)                                
+    png_name = str(logger_name)
+    
+    df = pd.DataFrame(rain_df)
+    df['dscore'] = 100
+    print(df.head(5))
+    print(df.max(axis = 0, skipna = True))
+    print(df.min(axis = 0, skipna = True))
+
+    print(df.size)
+    
+    df = df.fillna(0)
+    print(df)
+    print(df.size)
+    
+    df['ts'] = pd.to_datetime(df['ts'])
+    df['ts'] = df['ts'].dt.round('30min')
+    
+    
+    ##Create timerange for plotting X axis
+    date_idx = pd.date_range(start='1/1/2019', end='12/31/2019', freq='30min')
+    timerange = pd.DataFrame(date_idx, columns = ['ts'])
+    
+    
+    df_merge = pd.merge(timerange, df, on='ts', how='left')
+    df_merge = df_merge.set_index('ts')
+    df_merge['dscore'] = df_merge['dscore'].fillna(0)
+    #df_merge = df_merge.fillna(0)
+    #df_merge['csq'] = df_merge['csq'].fillna(0)
+    null_flag = 0
+    try:
+        df_avg = df_merge.resample("D").agg({'rain': 'sum',
+                                     'battery1': 'mean',
+                                     'battery2': 'mean',
+                                     'csq': 'mean',
+                                     'dscore': 'mean'})
+    except:
+        df_avg = pd.DataFrame(columns=['ts', 'rain', 'battery1', 'battery2', 'csq', 'dscore'])
+        df_avg = df_avg.fillna(0)
+        null_flag = 1
+    
+    print("XXXXXXXXXXXXXX end of DF XXXXXXXXXXXXXXX")
+    print(df_merge)
+    print("XXXXXXXXXXXXXX end of DF_MERGE XXXXXXXXXXXXXXX")
+    print(df_avg)
+    print("XXXXXXXXXXXXXX end of DF_AVG XXXXXXXXXXXXXXX")
+    print(timerange)
+    
+    try:
+        tilt = pd.DataFrame(get_tilt_df(png_name))
+    except:
+        print('xxxxxxxxx')
+        tilt=emp
+    
+    fig, axs = plt.subplots(5, sharex = True, constrained_layout=False, figsize= (20,20))
+    hd = fig.suptitle('Data Availability '+ png_name.upper() + ' 2019', y=0.90, x=0.55, fontsize=24)
+    
+    spec = gridspec.GridSpec(ncols=1, nrows =6)
+    
+
+    #axs[0] = fig.add_subplot(spec[0])
+    axs[1].plot(df_avg.index.values, df_avg.dscore, clip_on=False, color='green', label='rain data available', marker='.')
+    #axs[0].set_xlabel('Rain Data Available')
+    axs[1].set_ylabel('Rain Gauge Uptime', color='green', fontsize=14)
+    axs[1].tick_params(axis='y', labelcolor='green')
+    if null_flag == 0:
+        axs[1].fill_between(df_avg.index.values, df_avg.dscore, 0,
+                         color='green',       # The outline color
+                         alpha=0.1,
+                         label='rain data')
+    axs[1].yaxis.set_major_formatter(mtick.PercentFormatter())
+    axs[1].legend(loc='upper left', bbox_to_anchor=(1.005, 1), fancybox=True, fontsize = 14)
+    
+    axs[0].set_ylabel('Cumulative Rainfall (mm)', color='violet', fontsize=14)
+    axs[0].plot(df_avg.index.values, df_avg.rain, color='violet', label='cumulative rainfall', marker='.')
+    axs[0].tick_params(axis='y', labelcolor='black')
+    axs[0].legend(loc='upper left', bbox_to_anchor=(1.005, 1), fancybox=True, fontsize = 14)
+    
+    axs[3].set_ylabel('battery1 & battery2 (volts)', color='red')
+    axs[3].plot(df_avg.index.values, df_avg.battery1, color='red', label='battery1',marker='.')
+    axs[3].tick_params(axis='y', labelcolor='black')
+    #axs[2].set_ylim([0,6])
+    axs[3].plot(df_avg.index.values, df_avg.battery2, color='blue', label='battery2', marker='.', alpha=0.5)
+    axs[3].tick_params(axis='y', labelcolor='red')
+    axs[3].axhline(y=3.7, color='gray',linestyle='--', label='low battery threshold')
+    axs[3].legend(loc='upper left', bbox_to_anchor=(1.005, 1), fancybox=True, fontsize = 14)
+    
+    
+    axs[2].set_ylabel('Node Uptime', color='orange', fontsize=14)   
+    if (len(tilt.columns) > 30):
+        legend_col = 4
+    elif (len(tilt.columns) > 20):
+        legend_col = 3
+    elif (len(tilt.columns) > 10):
+        legend_col = 2
+    else:
+        legend_col = 1
+
+    colors2 = plt.cm.Spectral(np.linspace(0,1,len(tilt.columns)))
+    axs[2].set_prop_cycle(cycler('color', colors2))
+    
+    for n in range(len(tilt.columns)): 
+        axs[2].plot(tilt.index.values, (2.08333333333*tilt.iloc[ : , n ]), label='node '+str(n+1), marker='.', alpha=0.4)
+    axs[2].tick_params(axis='y', labelcolor='black')
+    lgd = axs[2].legend(title='accel1 nodes', loc='upper left', bbox_to_anchor=(1.005, 1), fancybox=True, ncol=legend_col, fontsize = 14)
+    axs[2].yaxis.set_major_formatter(mtick.PercentFormatter())
+    
+    axs[4].plot(df_avg.index.values, df_avg.csq, color='orange', clip_on=False, marker='.', label='csq value')
+    axs[4].set_ylabel('CSQ value', color='orange', fontsize=14)
+    axs[4].tick_params(axis='y', labelcolor='orange')
+    plt.axhspan(10,30, alpha=0.1, color='orange', label='ideal csq range')
+    axs[4].legend(loc='upper left', bbox_to_anchor=(1.005, 1), fancybox=True, fontsize = 14)
+   
+    
+    plt.xlim(datetime.datetime(2018,12,29),datetime.datetime(2020,1,2))
+    plt.subplots_adjust(hspace=0.1)
+    
+    #plt.savefig(r'C:\Users\GGRDD-8\Desktop\mplots\2019 maintenance\\' + png_name + ' data availability.png',dpi=200, bbox_extra_artists=(lgd,hd,), bbox_inches ='tight')
+    
+  
+    print(mdates)
+    date_flag = '0000-1-1'
+    name_flag = ''
+    for n in mdates.index.values:
+        if (png_name == mdates._get_value(n, 'logger_name')):
+            print(n)
+            site = mdates._get_value(n, 'logger_name')
+            print(str(mdates._get_value(int(n), 'logger_name')))
+            act_ts = (mdates._get_value(int(n), 'act_ts')) 
+            stat = (mdates._get_value(int(n), 'status_after_visit'))
+            print(act_ts)
+            if (date_flag == act_ts and name_flag == site):
+                continue
+            data_average(df_avg, tilt, png_name, act_ts, stat)
+            date_flag = act_ts
+            name_flag = site
+    plt.show()
+        
+    
+def data_average(rain_df, node_df, png_name, mdate, stat):
+    
+    site = png_name
+    maintenance_date = mdate
+    global chart_df
+    global r
+    node_df = node_df.fillna(0)
+    mdate_start = mdate
+    mdate_finish = mdate
+    ave = pd.DataFrame (columns = ['data availability','pre-maintenance','post-maintenance'])
+    post_start = pd.to_datetime(mdate_finish) + pd.DateOffset(days=2)
+    post_end = pd.to_datetime(mdate_finish) + pd.DateOffset(days=90)
+    pre_start = pd.to_datetime(mdate_start) - pd.DateOffset(days=90)
+    pre_end = pd.to_datetime(mdate_start) - pd.DateOffset(days=2)
+    
+#    post_start = (mdate + timedelta(days=1) ).strftime('%Y-%m-%d')
+ #   post_end = (mdate + timedelta(days=30) ).strftime('%Y-%m-%d')
+  #  pre_start = (mdate + timedelta(days=-1) ).strftime('%Y-%m-%d')
+   # pre_end = (mdate + timedelta(days=-31) ).strftime('%Y-%m-%d')
+    
+   # pre_mask = (rain_df.index.values > pre_start) & (rain_df.index.values < pre_end)
+    #post_mask = (rain_df.index.values > post_start) & (rain_df.index.values < post_end)
+    pre_rain = rain_df.loc[pre_start:pre_end]
+    post_rain = rain_df.loc[post_start:post_end]
+    pre_node = node_df.loc[pre_start:pre_end]
+    post_node = node_df.loc[post_start:post_end]
+    
+    tmp = pd.DataFrame(columns=['pre','post'])
+    if (mdate_finish != mdate_start):
+        mdate = str(mdate_start) + ' to ' + str(mdate_finish)
+    else:
+        mdate = str(mdate_start)
+
+    ave = ave.append({'data availability' : 'rain data (%)' ,
+                      'pre-maintenance' : round(pre_rain['dscore'].mean(),3),
+                      'post-maintenance' : round(post_rain['dscore'].mean(),3)},
+                      ignore_index=True)
+    ave = ave.append({'data availability' : 'cumulative_rainfall (mm)',
+                      'pre-maintenance' : round(pre_rain['rain'].mean(),3),
+                      'post-maintenance' : round(post_rain['rain'].mean(), 3)},
+                      ignore_index=True)
+    ave = ave.append({'data availability' : 'battery1 (v)' ,
+                      'pre-maintenance' : round(pre_rain['battery1'].mean(),3),
+                      'post-maintenance' : round(post_rain['battery1'].mean(),3)},
+                      ignore_index=True)
+    ave = ave.append({'data availability' : 'battery2 (v)',
+                      'pre-maintenance' : round(pre_rain['battery2'].mean(),3),
+                      'post-maintenance' : round(post_rain['battery2'].mean(),3)},
+                      ignore_index=True)
+    ave = ave.append({'data availability' : 'csq value',
+                      'pre-maintenance' : round(pre_rain['csq'].mean(),3),
+                      'post-maintenance' : round(post_rain['csq'].mean(),3)},
+                      ignore_index=True)
+    for n in range(len(node_df.columns)):
+        ave = ave.append({'data availability':'node '+str(n+1)+' (%)',
+                      'pre-maintenance' : round(2.08333333333*pre_node.iloc[ : , n ].mean(), 3),
+                      'post-maintenance' : round(2.08333333333*post_node.iloc[ : , n ].mean(), 3)},
+                      ignore_index=True) 
+        tmp = tmp.append({'pre': round(2.08333333333*pre_node.iloc[ : , n ].mean(), 3),
+                      'post': round(2.08333333333*post_node.iloc[ : , n ].mean(), 3)}, ignore_index=True)
+    
+    tmp = tmp.fillna(0)
+    try:
+        ave = ave.append({'data availability':'node(s) summary',
+                          'pre-maintenance' : round(tmp['pre'].mean()),
+                          'post-maintenance' : round(tmp['post'].mean())},
+                          ignore_index=True) 
+    except:
+        pass
+    ave = ave.fillna(0)
+    ave = ave.set_index('data availability')
+
+
+    delta_rain = ave.loc['rain data (%)', 'post-maintenance'] - ave.loc['rain data (%)', 'pre-maintenance']
+    delta_csq = ave.loc['csq value', 'post-maintenance'] - ave.loc['csq value', 'pre-maintenance']
+    try:
+        delta_node = ave.loc['node(s) summary', 'post-maintenance'] - ave.loc['node(s) summary', 'pre-maintenance']
+    except:
+        delta_node = 0
+    
+    d = ((delta_rain + delta_node)/2)
+    if (d < 0):
+        r = 0
+    if (d == 0):
+        r = 1
+    if (d > 0 and d <= threshold):
+        r = 2
+    if (d > threshold):
+        r = 3
+    
+    
+    chart_df = chart_df.append({'site':site,
+                                'date':maintenance_date,
+                                'rain_data':delta_rain,
+                                'csq':delta_csq,
+                                'node':delta_node, 
+                                'rating':int(r),
+                                'status_after_visit':stat},
+                               ignore_index=True) #, 'node_data':delta_node,}, ignore_index=True)
+    
+    
+    
+    fig,ay = plt.subplots() # no visible frame
+    plt.suptitle(png_name.upper() +' 3-day Data: Pre & Post-Maintenance ('+mdate+')', y=0.915)
+    ay.xaxis.set_visible(False)  
+    ay.yaxis.set_visible(False)
+    ay.set_frame_on(False)
+    tab = table(ay, ave, loc='upper center', colWidths=[0.25]*len(ave.columns))  
+    tab.auto_set_font_size(False) # Activate set fontsize manually
+    tab.set_fontsize(8) # if ++fontsize is necessary ++colWidths
+    tab.scale(1.3, 1) # change size table
+    
+    #plt.savefig(r'C:\Users\GGRDD-8\Desktop\mplots\2019 maintenance\\' + png_name + ' ' + mdate +' maintenance.png',bbox_inches='tight', dpi=200)
+    plt.show()
+    
+        
+    print (ave)
+    print ('Pre-maintenance ('+ mdate + ')')
+    print ('rain data uptime average: ' + str(pre_rain['dscore'].mean()))
+    print ('average rainfall: '+ str(pre_rain['rain'].mean()))
+    print ('battery1 averge value: ' + str(pre_rain['battery1'].mean()))
+    print ('battery2 averge value: ' + str(pre_rain['battery2'].mean()))
+    print ('csq value average: '+ str(pre_rain['csq'].mean()))
+    print ('Post-maintenance ('+ mdate + ')')
+    print ('rain data uptime average: ' + str(post_rain['dscore'].mean()))
+    print ('average rainfall: '+ str(post_rain['rain'].mean()))
+    print ('battery1 averge value: ' + str(post_rain['battery1'].mean()))
+    print ('battery2 averge value: ' + str(post_rain['battery2'].mean()))
+    print ('csq value average: '+ str(post_rain['csq'].mean()))
+
+    
+
+                            #returns maintenance_logs=['act_id', 'act_ts', 'logger_name']
+mdates = pd.DataFrame(fetch_maintenance_logs(), columns=['act_ts','logger_name','status_after_visit'])
+site_list = pd.DataFrame(fetch_maintenance_logs(), columns=['logger_name'])
+site_list = pd.DataFrame.drop_duplicates(site_list)
+print (site_list) 
+for logger_name in site_list.logger_name:
+    if str(logger_name) == 'Jor':
+        logger_name = str(logger_name).lower()+'ta'
+    rain_df = pd.DataFrame(fetch_data_table(logger_name.lower()))
+    multiplot(rain_df, logger_name)
+
+print (chart_df)
+print ('chart_df')
+chart_df.to_csv(r'C:\Users\GGRDD-8\Desktop\mplots\2019 maintenance\summary.csv')
+
+print ('FIN')
