@@ -1,2 +1,2 @@
 # CBA
-Script used in CBA paper
+Scripts used in CBA paper
